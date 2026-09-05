@@ -11,6 +11,7 @@ venv/
 # Local application data
 backend/data/*.db
 backend/data/*.db-*
+backend/data/.secret_key
 
 # Node
 frontend/node_modules/
