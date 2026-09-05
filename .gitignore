@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.env
+.env.*
+!.env.example
+
+# Local application data
+backend/data/*.db
+backend/data/*.db-*
+
+# Node
+frontend/node_modules/
+frontend/dist/
+
+# Local assistant and research metadata
+.claude/
+.research/
+
+# Editor and OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

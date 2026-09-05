@@ -1,0 +1,17 @@
+# AI 网文写作台后端运行环境
+# Python: 3.10+（推荐 3.12）
+# 安装命令：python -m pip install -r requirements.txt
+
+# Web API 框架与 ASGI 服务器
+fastapi>=0.115,<1.0
+uvicorn[standard]>=0.30,<1.0
+
+# 数据库与数据校验
+sqlalchemy>=2.0.36,<3.0
+pydantic>=2.9,<3.0
+
+# OpenAI 兼容 API 客户端（支持 DeepSeek、Kimi、豆包、通义、GLM 等）
+openai>=1.55,<2.0
+
+# API Key 本地 Fernet 加密
+cryptography>=44,<46
