@@ -1,4 +1,5 @@
-const BASE = '/api'
+const configuredBase = import.meta.env.VITE_API_BASE_URL || '/api'
+const BASE = configuredBase.replace(/\/$/, '')
 
 async function readDetail(r) {
   let msg = '请求失败'

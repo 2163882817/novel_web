@@ -160,7 +160,74 @@ npm run dev
 
 Vite 开发服务器会把 `/api` 请求代理到 `http://127.0.0.1:8000`。如果前端目录当前只有工程配置而没有完整页面源码，请先完成前端页面开发，或直接使用 Swagger 文档测试后端接口。
 
-### 6. 配置模型 API
+### 6. 云端部署
+
+当前项目适合采用“Cloudflare Pages 前端 + Python Web Service 后端”的部署方式。Cloudflare Pages 负责托管 Vue 静态页面，FastAPI 后端需要部署到支持 Python Web Service 的平台（例如 Render、Railway 或其他同类服务）。
+
+#### 部署 FastAPI 后端
+
+在 Python Web Service 中连接项目仓库，并填写：
+
+```text
+根目录：backend
+运行时：Python 3.12
+构建命令：pip install -r requirements.txt
+启动命令：uvicorn app.main:app --host 0.0.0.0 --port $PORT
+健康检查：/api/health
+```
+
+部署完成后，访问 `https://你的后端域名/api/health`，应返回：
+
+```json
+{"status":"ok"}
+```
+
+#### 部署 Cloudflare Pages 前端
+
+在 Cloudflare Pages 中填写：
+
+```text
+根目录：frontend
+框架预设：Vue
+构建命令：npm run build
+构建输出目录：dist
+Node.js：20
+```
+
+在 Pages 的生产环境变量中添加：
+
+```text
+VITE_API_BASE_URL=https://你的后端域名/api
+```
+
+该变量必须以 `VITE_` 开头，值的末尾必须包含 `/api`。修改环境变量后需要重新触发一次构建，因为 Vite 会在构建时将变量写入前端资源。前端 API 地址默认仍为 `/api`，因此不配置该变量不会影响本地开发。
+
+#### 配置后端跨域
+
+后端默认允许跨域，便于本地开发和首次联调。正式部署时，可在后端 Web Service 中设置：
+
+```text
+CORS_ORIGINS=https://你的项目.pages.dev
+```
+
+如果有多个前端来源，用英文逗号分隔：
+
+```text
+CORS_ORIGINS=https://你的项目.pages.dev,https://novel.example.com
+```
+
+不要在来源末尾添加 `/`。后端代码会读取该变量并限制允许的前端域名。
+
+#### 部署后的检查顺序
+
+1. 访问后端 `/api/health`，确认返回 `{"status":"ok"}`；
+2. 打开前端，在浏览器开发者工具的 Network 面板中保存 API 配置；
+3. 确认请求地址是 `https://你的后端域名/api/config`，而不是前端 Pages 域名下的 `/api/config`；
+4. 创建一本新小说，确认请求 `POST /api/novels` 成功。
+
+当前后端使用 SQLite。本地文件部署到临时磁盘时，服务重启或重新部署可能导致小说和配置丢失；正式使用应为 Web Service 配置持久化磁盘，或将数据库迁移到 PostgreSQL。无论采用哪种方式，都必须同时持久化 `backend/data/novel.db` 和 `backend/data/.secret_key`。
+
+### 7. 配置模型 API
 
 在应用的 API 配置页面中填写：
 
@@ -228,6 +295,9 @@ test1/
 │   ├── requirements.txt
 │   └── .venv/                    # 本地虚拟环境，不应提交
 ├── frontend/
+│   ├── src/
+│   │   └── api.js                # API 基地址和请求封装
+│   ├── .env.example              # 线上 API 地址配置示例
 │   ├── package.json
 │   ├── vite.config.js
 │   └── index.html
@@ -341,7 +411,9 @@ uvicorn app.main:app --reload
 
 ### 前端请求跨域或连接失败
 
-确认后端运行在 `127.0.0.1:8000`，前端运行在 `127.0.0.1:5173`。开发环境下 Vite 会自动代理 `/api` 请求；如果修改了后端端口，需要同步修改 `frontend/vite.config.js`。
+本地开发时确认后端运行在 `127.0.0.1:8000`，前端运行在 `127.0.0.1:5173`。Vite 会自动代理 `/api` 请求；如果修改了后端端口，需要同步修改 `frontend/vite.config.js`。
+
+云端部署时确认 Cloudflare Pages 的构建环境变量 `VITE_API_BASE_URL` 已设置为完整后端地址，例如 `https://novel-api.example.com/api`，并在修改变量后重新部署前端。浏览器 Network 面板中的请求应直接指向后端域名。如果仍然出现 CORS 错误，请检查后端的 `CORS_ORIGINS` 是否包含完整前端来源（不带末尾 `/`）。
 
 ### 为什么 AI 会出现设定错误
 

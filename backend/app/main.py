@@ -1,4 +1,6 @@
 """AI 网文写作台 —— FastAPI 入口"""
+import os
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
@@ -33,10 +35,10 @@ _migrate()
 
 app = FastAPI(title="AI 网文写作台", version="0.3.0")
 
-# 单机使用，放开跨域
+cors_origins = [origin.strip() for origin in os.getenv("CORS_ORIGINS", "*").split(",") if origin.strip()]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=cors_origins,
     allow_methods=["*"],
     allow_headers=["*"],
 )
