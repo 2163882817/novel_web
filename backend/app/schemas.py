@@ -37,6 +37,17 @@ class WriteRequest(BaseModel):
     writing_restrictions: str = ""
 
 
+class VariantOut(BaseModel):
+    label: Literal["A", "B", "C"]
+    content: str
+    word_count: int
+
+
+class VariantsOut(BaseModel):
+    variants: list[VariantOut]
+    duration_ms: int
+
+
 class NovelIn(BaseModel):
     title: str = Field(min_length=1, max_length=200)
     genre: str = ""

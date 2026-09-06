@@ -86,6 +86,7 @@ export const deleteForeshadowing = (id) => request('DELETE', `/foreshadowings/${
 
 /* ---------- 流式写作 ---------- */
 /** SSE 流式写作：逐字回调 onDelta，事件流结束时返回 done 统计 */
+export const generateVariants = (p) => request('POST', '/write/variants', p)
 export async function streamWrite(payload, { onDelta, onError, signal }) {
   const r = await fetch(`${BASE}/write/stream`, {
     method: 'POST',

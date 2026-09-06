@@ -6,6 +6,7 @@ import {
   deleteChapter,
   exportChapterTxt,
   finalizeChapter,
+  generateVariants,
   genOutline,
   genTitles,
   getNovel,
@@ -41,6 +42,9 @@ const planError = ref('')
 
 /* ② 写手（流式） */
 const output = ref('')
+const variants = ref([])
+const variantsWriting = ref(false)
+const variantsError = ref('')
 const writing = ref(false)
 const writeError = ref('')
 const stats = ref(null)
@@ -81,6 +85,8 @@ function resetTransient() {
   plannerRaw.value = null
   planError.value = ''
   output.value = ''
+  variants.value = []
+  variantsError.value = ''
   stats.value = null
   writeError.value = ''
   checkReport.value = null
@@ -170,6 +176,45 @@ async function onPlan() {
     planError.value = e.message
   } finally {
     planning.value = false
+  }
+}
+
+async function onWriteVariants() {
+  if (variantsWriting.value || !writeForm.outline.trim()) return
+  variantsWriting.value = true
+  variantsError.value = ''
+  variants.value = []
+  msg.value = ''
+  try {
+    const r = await generateVariants({
+      novel_id: novelId,
+      outline: writeForm.outline,
+      previous_text: writeForm.previous_text,
+      max_tokens: 4096,
+    })
+    variants.value = r.variants || []
+    stats.value = r
+  } catch (e) {
+    variantsError.value = e.message
+  } finally {
+    variantsWriting.value = false
+  }
+}
+
+function importVariant(variant) {
+  output.value = variant.content
+  msg.value = `已将版本 ${variant.label} 导入主编辑器，其他版本仍保留为素材`
+  msgOk.value = true
+}
+
+async function copyVariant(variant) {
+  try {
+    await navigator.clipboard.writeText(variant.content)
+    msg.value = `版本 ${variant.label} 已复制，可粘贴到主编辑器合并`
+    msgOk.value = true
+  } catch {
+    msg.value = '复制失败，请手动选择正文后复制'
+    msgOk.value = false
   }
 }
 
@@ -449,22 +494,47 @@ async function onExport() {
             <label>前文衔接 <span class="hint">留空自动取上一章结尾 800 字</span></label>
             <textarea v-model="writeForm.previous_text" rows="2" placeholder="也可手动粘贴特定片段"></textarea>
             <div class="row">
-              <button class="primary" :disabled="writing || planning" @click="onWrite">
-                {{ writing ? '写作中…' : '开始写作（写手）' }}
+              <button class="primary" :disabled="writing || planning || variantsWriting" @click="onWrite">
+                {{ writing ? '写作中…' : '开始写作（单版）' }}
+              </button>
+              <button :disabled="writing || planning || variantsWriting || !writeForm.outline.trim()" @click="onWriteVariants">
+                {{ variantsWriting ? '生成 A/B/C 中…' : '生成 A/B/C 三版' }}
               </button>
               <button :disabled="!writing" @click="onStop">停止</button>
             </div>
             <p v-if="writeError" class="msg err">{{ writeError }}</p>
+            <p v-if="variantsError" class="msg err">{{ variantsError }}</p>
+
+            <div v-if="variants.length" class="variants-panel">
+              <div class="output-head">
+                <span>三版正文素材</span>
+                <span class="hint">选择一版导入主编辑器，其他版本不会删除</span>
+              </div>
+              <div class="variant-grid">
+                <article v-for="variant in variants" :key="variant.label" class="variant-card">
+                  <div class="variant-head">
+                    <strong>版本 {{ variant.label }}</strong>
+                    <span class="hint">{{ variant.word_count }} 字</span>
+                  </div>
+                  <pre class="variant-body" tabindex="0">{{ variant.content }}</pre>
+                  <div class="row variant-actions">
+                    <button class="primary" @click="importVariant(variant)">导入主编辑器</button>
+                    <button @click="copyVariant(variant)">复制全文</button>
+                  </div>
+                </article>
+              </div>
+            </div>
 
             <div v-show="output || writing" class="output">
               <div class="output-head">
-                <span>{{ writing ? '正在生成…' : `已生成 ${charCount} 字` }}</span>
+                <span>{{ writing ? '正在生成…' : `主编辑器 · ${charCount} 字` }}</span>
+                <span v-if="variants.length" class="hint">可粘贴素材面板片段进行合并</span>
               </div>
-              <pre class="output-body">{{ output }}<span v-if="writing" class="cursor">▌</span></pre>
+              <textarea v-model="output" rows="14" class="editor" :placeholder="writing ? '正文生成中…' : '选择版本导入，或直接编辑主稿'"></textarea>
               <div class="row save-row">
                 <input v-model="saveTitle" class="grow" placeholder="章节标题" />
                 <button :disabled="titling" :title="'AI 起标题'" @click="onGenTitles">✨</button>
-                <button class="primary" :disabled="!output || writing" @click="onSaveAsChapter">保存为章节</button>
+                <button class="primary" :disabled="!output || writing || variantsWriting" @click="onSaveAsChapter">保存为章节</button>
               </div>
               <div v-if="titleCandidates.length" class="title-cands">
                 <span class="hint">候选标题（点击选用）：</span>

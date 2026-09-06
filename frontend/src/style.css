@@ -366,7 +366,48 @@ button.link {
   min-height: 360px;
 }
 
-/* ---------- 流式输出 ---------- */
+/* ---------- 一纲三版 ---------- */
+.variants-panel {
+  margin-top: 18px;
+}
+.variant-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+.variant-card {
+  min-width: 0;
+  background: var(--input);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px;
+}
+.variant-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+.variant-body {
+  margin: 0;
+  height: 300px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  user-select: text;
+  font-family: "Noto Serif SC", "Songti SC", "SimSun", serif;
+  font-size: 14px;
+  line-height: 1.8;
+}
+.variant-actions {
+  margin-top: 10px;
+}
+@media (max-width: 900px) {
+  .variant-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 .output {
   margin-top: 16px;
 }
