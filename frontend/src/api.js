@@ -94,7 +94,8 @@ export async function streamWrite(payload, { onDelta, onError, signal }) {
     body: JSON.stringify(payload),
     signal,
   })
-  if (!r.ok || !r.body) throw new Error(await readDetail(r))
+  if (!r.ok) throw new Error(await readDetail(r))
+  if (!r.body) throw new Error('服务器未返回写作数据')
 
   const reader = r.body.getReader()
   const decoder = new TextDecoder()
@@ -120,5 +121,17 @@ export async function streamWrite(payload, { onDelta, onError, signal }) {
       else if (evt.type === 'done') Object.assign(done, evt)
     }
   }
+  const tail = buf.trim()
+  if (tail.startsWith('data: ')) {
+    try {
+      const evt = JSON.parse(tail.slice(6))
+      if (evt.type === 'delta') onDelta(evt.text)
+      else if (evt.type === 'error') onError(evt.message)
+      else if (evt.type === 'done') Object.assign(done, evt)
+    } catch {
+      /* 忽略不完整的尾部事件 */
+    }
+  }
+  if (!done.status) throw new Error('写作连接意外中断，服务器未返回完成状态')
   return done
 }

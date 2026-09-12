@@ -81,7 +81,11 @@ async def write_variants(req: WriteRequest):
         content, usage = await llm_gateway.chat(cfg, messages, temperature=cfg.temperature, max_tokens=req.max_tokens)
         return {"label": label, "content": content, "word_count": len(re.sub(r"\\s", "", content)), "usage": usage}
 
-    results = await asyncio.gather(*(generate(label) for label in ("A", "B", "C")))
+    results = await asyncio.gather(*(generate(label) for label in ("A", "B", "C")), return_exceptions=True)
+    failed = next((result for result in results if isinstance(result, Exception)), None)
+    if failed:
+        label = ("A", "B", "C")[results.index(failed)]
+        raise HTTPException(status_code=502, detail=f"版本 {label} 生成失败：{type(failed).__name__}: {failed}")
     duration_ms = int((time.monotonic() - t0) * 1000)
     with SessionLocal() as db:
         for result in results:
