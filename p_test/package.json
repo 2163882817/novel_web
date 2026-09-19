@@ -1,0 +1,14 @@
+{
+  "name": "ai-novel-playwright-tests",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "playwright test",
+    "test:ui": "playwright test --ui",
+    "report": "playwright show-report",
+    "cases": "python generate_test_cases.py"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.55.0"
+  }
+}

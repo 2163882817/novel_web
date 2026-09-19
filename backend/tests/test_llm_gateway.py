@@ -83,6 +83,27 @@ class ThinkingStripTests(unittest.TestCase):
 
 
 class GatewayTests(unittest.IsolatedAsyncioTestCase):
+    async def test_retries_transient_upstream_error(self):
+        class TemporaryUpstreamError(Exception):
+            status_code = 503
+
+        request = AsyncMock(side_effect=[TemporaryUpstreamError(), "恢复后的响应"])
+        with patch.object(llm_gateway.asyncio, "sleep", new=AsyncMock()) as sleep:
+            result = await llm_gateway._request_with_retry(request)
+
+        self.assertEqual(result, "恢复后的响应")
+        self.assertEqual(request.await_count, 2)
+        sleep.assert_awaited_once_with(1)
+
+    async def test_does_not_retry_non_transient_error(self):
+        request = AsyncMock(side_effect=ValueError("请求参数错误"))
+        with patch.object(llm_gateway.asyncio, "sleep", new=AsyncMock()) as sleep:
+            with self.assertRaisesRegex(ValueError, "请求参数错误"):
+                await llm_gateway._request_with_retry(request)
+
+        self.assertEqual(request.await_count, 1)
+        sleep.assert_not_awaited()
+
     async def test_connection_handles_string_response(self):
         create = AsyncMock(return_value="连接正常")
         client = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=create)))

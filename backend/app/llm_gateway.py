@@ -1,15 +1,31 @@
 """LLM 网关：封装 OpenAI 兼容 API（DeepSeek/Kimi/豆包/通义/GLM 等均可）"""
+import asyncio
 import json
 import re
 import time
 from dataclasses import dataclass
-from typing import AsyncIterator
+from collections.abc import Awaitable, Callable
+from typing import AsyncIterator, TypeVar
 
-from openai import AsyncOpenAI
+from openai import (
+    APIConnectionError,
+    APITimeoutError,
+    AsyncOpenAI,
+    InternalServerError,
+    RateLimitError,
+)
 
 from app.crypto import decrypt
 from app.database import SessionLocal
 from app.models import ApiConfig
+
+
+T = TypeVar("T")
+
+# 模型请求的重试放在网关层，便于所有调用获得一致的行为。OpenAI SDK 的
+# 内部重试关闭，避免一次用户请求被 SDK 与本层的重试叠加放大。
+_REQUEST_ATTEMPTS = 3
+_RETRY_DELAYS_SECONDS = (1, 2)
 
 
 @dataclass
@@ -37,7 +53,27 @@ def get_config() -> LLMConfig | None:
 
 
 def build_client(cfg: LLMConfig) -> AsyncOpenAI:
-    return AsyncOpenAI(base_url=cfg.base_url, api_key=cfg.api_key, max_retries=2)
+    return AsyncOpenAI(base_url=cfg.base_url, api_key=cfg.api_key, max_retries=0)
+
+
+def _is_transient_error(error: Exception) -> bool:
+    """判断错误是否值得重试，避免把配置、鉴权和请求格式错误拖慢。"""
+    if isinstance(error, (APIConnectionError, APITimeoutError, RateLimitError, InternalServerError)):
+        return True
+    status_code = getattr(error, "status_code", None)
+    return status_code in (408, 409, 429) or (isinstance(status_code, int) and status_code >= 500)
+
+
+async def _request_with_retry(request: Callable[[], Awaitable[T]]) -> T:
+    """对上游临时故障进行有限退避重试。"""
+    for attempt in range(_REQUEST_ATTEMPTS):
+        try:
+            return await request()
+        except Exception as error:
+            if not _is_transient_error(error) or attempt == _REQUEST_ATTEMPTS - 1:
+                raise
+            await asyncio.sleep(_RETRY_DELAYS_SECONDS[attempt])
+    raise RuntimeError("请求重试流程异常结束")  # 仅用于类型检查，正常不可达
 
 
 _THINK_RE = re.compile(
@@ -119,11 +155,11 @@ async def test_connection(cfg: LLMConfig) -> dict:
     client = build_client(cfg)
     t0 = time.monotonic()
     try:
-        resp = await client.chat.completions.create(
+        resp = await _request_with_retry(lambda: client.chat.completions.create(
             model=cfg.model_name,
             messages=[{"role": "user", "content": "请只回复：连接正常"}],
             max_tokens=10,
-        )
+        ))
         return {
             "ok": True,
             "reply": _extract_completion_text(resp),
@@ -138,13 +174,13 @@ async def _iter_chunks(
 ) -> AsyncIterator[str]:
     """共享的底层流式迭代器：逐个产出原始 delta 文本（不做任何清洗）。"""
     client = build_client(cfg)
-    stream = await client.chat.completions.create(
+    stream = await _request_with_retry(lambda: client.chat.completions.create(
         model=cfg.model_name,
         messages=messages,
         temperature=cfg.temperature,
         max_tokens=max_tokens,
         stream=True,
-    )
+    ))
     if not hasattr(stream, "__aiter__"):
         # 部分兼容服务虽传 stream=True 仍一次性返回完整响应
         yield _extract_completion_text(stream)
@@ -206,12 +242,12 @@ async def chat(
 ) -> tuple[str, dict | None]:
     """非流式普通对话（用于修稿等长文本输出）。返回 (文本, usage 或 None)。"""
     client = build_client(cfg)
-    resp = await client.chat.completions.create(
+    resp = await _request_with_retry(lambda: client.chat.completions.create(
         model=cfg.model_name,
         messages=messages,
         temperature=temperature,
         max_tokens=max_tokens,
-    )
+    ))
     usage = None
     try:
         u = resp.usage
@@ -241,7 +277,7 @@ async def json_chat(
             )
             if use_format:
                 kwargs["response_format"] = {"type": "json_object"}
-            resp = await client.chat.completions.create(**kwargs)
+            resp = await _request_with_retry(lambda: client.chat.completions.create(**kwargs))
             content = _extract_completion_text(resp)
             usage = None
             try:
